@@ -102,6 +102,8 @@
   #eq i:nth-child(2){height:100%;animation-delay:.25s}
   #eq i:nth-child(3){height:45%;animation-delay:.5s}
   @keyframes eq{0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1)}}
+  #eq i{transition:opacity .15s}
+  #eq.buffering i{animation-play-state:paused;opacity:.3}
 
   #status{position:absolute;left:calc(340px + 16px);bottom:84px;z-index:500;display:none;
     max-width:min(540px,70%);padding:9px 13px;font-size:12.5px;border-radius:10px;
@@ -495,6 +497,8 @@ function startPlayback(st) {
   audio.removeAttribute("src");
   current = st.id;
   centerOn(st);
+  bufferingSub = null; // drop any saved sub left over from a previous station
+  $("#eq").classList.remove("buffering");
   $("#p-title").textContent = st.name;
   $("#p-sub").textContent = fmtFreq(st) + " \u00b7 " + (st.codec || "audio") + " \u00b7 " + st.stream;
   renderList();
@@ -539,7 +543,28 @@ function refreshUI() {
 }
 audio.addEventListener("play", () => { refreshPlayBtn(); refreshUI(); });
 audio.addEventListener("pause", () => { refreshPlayBtn(); refreshUI(); });
+// Buffering: the stream is alive but data is slow. We deliberately don't use
+// #status for it (that would clobber the error toast), so it shows in the
+// player's sub line, with the EQ bars paused and dimmed.
+let bufferingSub = null;
+function setBuffering(on) {
+  const eq = $("#eq"), sub = $("#p-sub");
+  if (on) {
+    if (!bufferingSub) bufferingSub = sub.textContent;
+    sub.textContent = "Buffering\u2026";
+    eq.classList.add("buffering");
+  } else {
+    if (bufferingSub) sub.textContent = bufferingSub;
+    bufferingSub = null;
+    eq.classList.remove("buffering");
+  }
+}
+audio.addEventListener("waiting", () => setBuffering(true));
+audio.addEventListener("stalled", () => setBuffering(true));
+audio.addEventListener("playing", () => setBuffering(false));
+audio.addEventListener("pause", () => setBuffering(false));
 audio.addEventListener("error", () => {
+  setBuffering(false);
   if (current) showStatus("error", "Stream failed \u2014 the URL may be down, or the server blocked it.");
 });
 

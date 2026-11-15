@@ -9,7 +9,7 @@ the code as of this writing; they'll drift.
 
 ## 🎛️ Usability
 
-- [ ] **Buffering indicator.** The UI only knows two states: playing or
+- [x] **Buffering indicator.** The UI only knows two states: playing or
       error. There's no listener for `waiting`/`playing`/`stalled` on the
       audio element (index.html:539ff). Add a "buffering…" status (and maybe
       dim the EQ bars) so a slow station doesn't feel broken.
