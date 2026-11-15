@@ -32,7 +32,7 @@ the code as of this writing; they'll drift.
       zero `localStorage` matches in the template). Save + restore: volume,
       search query, active region filter, and last-played station. Cheap
       win, big "it's mine now" feeling.
-- [ ] **Favorites.** A heart on each station/list row, persisted locally
+- [x] **Favorites.** A heart on each station/list row, persisted locally
       (localStorage or a local JSON file), with a "My favorites" filter.
       Pairs with the persistence item above.
 - [ ] **More keyboard shortcuts.** Space already toggles play (index.html:570);
