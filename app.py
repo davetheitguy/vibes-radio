@@ -1,0 +1,298 @@
+"""Montreal Radio Map — Flask backend.
+
+Serves the map UI, a station list API backed by stations.json (list, add,
+remove), and a /proxy endpoint that fetches upstream streams with
+browser-like headers and rewrites HLS playlists so segments also come
+through us (this sidesteps CORS and Referer/UA blocking).
+
+Run:  python app.py   ->  http://127.0.0.1:5000
+"""
+
+import json
+import os
+import re
+import threading
+from urllib.parse import quote, urljoin, urlparse
+
+import requests
+from flask import Flask, Response, jsonify, render_template, request
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIONS_FILE = os.path.join(BASE_DIR, "stations.json")
+
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+DEFAULT_REFERER = "https://www.bbc.co.uk"
+
+app = Flask(__name__)
+session = requests.Session()
+session.headers.update({"User-Agent": BROWSER_UA, "Referer": DEFAULT_REFERER})
+
+_lock = threading.Lock()
+
+PRIVATE_HOST = re.compile(
+    r"^(localhost|0\.0\.0\.0|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\."
+    r"|::1?|f[cd][0-9a-f]{2}:)", re.IGNORECASE
+)
+
+
+# ---------------------------------------------------------------- stations --
+
+def load_stations():
+    # utf-8-sig: tolerate a UTF-8 BOM (Windows Notepad / PowerShell write one)
+    with open(STATIONS_FILE, encoding="utf-8-sig") as f:
+        return json.load(f)
+
+
+def save_stations(stations):
+    """Atomically write the station list (temp file + rename)."""
+    tmp = STATIONS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(stations, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp, STATIONS_FILE)
+
+
+def slugify(name):
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug or "station"
+
+
+@app.get("/")
+def index():
+    return render_template("index.html")
+
+
+@app.get("/api/stations")
+def api_list_stations():
+    with _lock:
+        return jsonify(load_stations())
+
+
+@app.post("/api/stations")
+def api_add_station():
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name") or "").strip()
+    stream = str(data.get("stream") or "").strip()
+    if not name:
+        return jsonify(error="name is required"), 400
+    parsed = urlparse(stream)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return jsonify(error="stream must be a valid http(s) URL"), 400
+
+    def text(key):
+        v = str(data.get(key) or "").strip()
+        return v or None
+
+    def num(key):
+        v = data.get(key)
+        if v is None or v == "":
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    lat, lng = num("lat"), num("lng")
+    if (lat is None) != (lng is None) or (lat is not None and not (-90 <= lat <= 90 and -180 <= lng <= 180)):
+        return jsonify(error="lat and lng must both be set (or both left empty)"), 400
+
+    st = {
+        "id": None,  # filled below once a unique one is chosen
+        "name": name,
+        "stream": stream,
+        "hls": bool(data.get("hls")) or "m3u8" in stream.lower(),
+    }
+    for key in ("frequency", "codec", "country", "region", "city", "logo"):
+        v = text(key)
+        if v:
+            st[key] = v
+    if lat is not None:
+        st["lat"] = lat
+        st["lng"] = lng
+
+    with _lock:
+        stations = load_stations()
+        existing = {s.get("id") for s in stations}
+        base = slugify(name)
+        st["id"] = base
+        i = 2
+        while st["id"] in existing:
+            st["id"] = f"{base}-{i}"
+            i += 1
+        stations.append(st)
+        save_stations(stations)
+    return jsonify(st), 201
+
+
+@app.delete("/api/stations/<station_id>")
+def api_delete_station(station_id):
+    with _lock:
+        stations = load_stations()
+        remaining = [s for s in stations if s.get("id") != station_id]
+        if len(remaining) == len(stations):
+            return jsonify(error="station not found"), 404
+        save_stations(remaining)
+    return jsonify(ok=True)
+
+
+# ------------------------------------------------------------------- proxy --
+
+def is_m3u8(url, content_type):
+    if "mpegurl" in (content_type or "").lower():
+        return True
+    return urlparse(url).path.lower().endswith(".m3u8")
+
+
+def rewrite_m3u8(text, base_url):
+    """Rewrite every media URI in a playlist to go through /proxy."""
+
+    def sub(uri_match):
+        uri = uri_match.group(1)
+        if uri.startswith("data:"):
+            return uri_match.group(0)
+        return "/proxy?url=" + quote(urljoin(base_url, uri), safe="")
+
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            if "URI=\"" in stripped:
+                line = re.sub(r'URI="([^"]+)"', lambda m: "URI=\"" + sub(m) + "\"",
+                              line)
+        elif not stripped.startswith("/proxy"):
+            line = "/proxy?url=" + quote(urljoin(base_url, stripped), safe="")
+        lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+# StreamTheWorld variant playlists look like:
+#   https://<n>.live.streamtheworld.com:443/<MOUNT>/HLS/<token>/<idx>/playlist.m3u8
+# The embedded token is a session token that expires after ~1 minute (upstream
+# then answers 410 "Session ID not found"). A fresh master fetch always mints a
+# new token, so the master (via the redirector) is the recovery anchor.
+STW_VARIANT_RE = re.compile(
+    r"^https://[\w.-]+\.live\.streamtheworld\.com(?::443)?"
+    r"/(?P<mount>[A-Za-z0-9_]+)/HLS/[\w-]+/(?P<idx>\d+)/playlist\.m3u8$",
+    re.IGNORECASE,
+)
+
+
+def _recover_stw_variant(url):
+    """Rebuild an expired StreamTheWorld variant playlist.
+
+    Re-fetches a fresh master through the redirector (which mints a new
+    session token, possibly on a different host) and serves the variant at
+    the same index, rewritten for the proxy. Returns None on any failure so
+    the caller falls back to an error response.
+    """
+    m = STW_VARIANT_RE.match(url)
+    if not m:
+        return None
+    redirector = (
+        "https://playerservices.streamtheworld.com/api/livestream-redirect/"
+        + m.group("mount")
+        + ".m3u8"
+    )
+    try:
+        master = session.get(redirector, timeout=(6, 30))
+    except requests.RequestException:
+        return None
+    if master.status_code != 200 or b"#EXTM3U" not in master.content[:1024]:
+        return None
+    variants = [
+        line.strip()
+        for line in master.text.splitlines()
+        if line.strip()
+        and not line.strip().startswith("#")
+        and line.strip().lower().endswith(".m3u8")
+    ]
+    try:
+        idx = int(m.group("idx"))
+    except ValueError:
+        return None
+    if not variants or idx >= len(variants):
+        return None
+    try:
+        variant = session.get(variants[idx], timeout=(6, 30))
+    except requests.RequestException:
+        return None
+    if variant.status_code != 200 or b"#EXTM3U" not in variant.content[:1024]:
+        return None
+    text = rewrite_m3u8(variant.text, variant.url)
+    resp = Response(text, status=200)
+    resp.headers["Content-Type"] = "application/vnd.apple.mpegurl; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.get("/proxy")
+def proxy():
+    url = (request.args.get("url") or "").strip()
+    if not url:
+        return jsonify(error="url query parameter is required"), 400
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return jsonify(error="only http(s) URLs may be proxied"), 400
+    if PRIVATE_HOST.match(parsed.hostname or ""):
+        return jsonify(error="this host is not allowed"), 403
+
+    try:
+        upstream = session.get(url, stream=True, timeout=(6, 60))
+    except requests.RequestException as exc:
+        recovered = _recover_stw_variant(url)
+        if recovered is not None:
+            return recovered
+        return jsonify(error=f"upstream request failed: {exc}"), 502
+    if upstream.status_code >= 400:
+        recovered = _recover_stw_variant(url)
+        if recovered is not None:
+            upstream.close()
+            return recovered
+        upstream.close()
+        return jsonify(error=f"upstream returned HTTP {upstream.status_code}"), 502
+
+    ctype = upstream.headers.get("Content-Type", "")
+    base_url = upstream.url  # final URL after redirects
+
+    if is_m3u8(url, ctype):
+        # Playlists are small: read the whole thing, sniff, rewrite.
+        body = b"".join(upstream.iter_content(chunk_size=64 * 1024))
+        if b"#EXTM3U" not in body[:1024]:
+            # Not really a playlist (redirector served audio directly).
+            return _stream_response(body, ctype)
+        text = rewrite_m3u8(body.decode("utf-8", "replace"), base_url)
+        resp = Response(text, status=200)
+        resp.headers["Content-Type"] = "application/vnd.apple.mpegurl; charset=utf-8"
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    return _stream_response(None, ctype, upstream)
+
+
+def _stream_response(body, ctype, upstream=None):
+    if body is not None:
+        iterator = iter([body])
+    else:
+        iterator = upstream.iter_content(chunk_size=64 * 1024)
+
+    def generate():
+        for chunk in iterator:
+            if chunk:
+                yield chunk
+
+    resp = Response(generate(), status=200)
+    if ctype:
+        resp.headers["Content-Type"] = ctype
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Accel-Buffering"] = "no"
+    return resp
+
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5000, threaded=True)
