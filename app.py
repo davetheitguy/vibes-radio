@@ -1,4 +1,4 @@
-"""Montreal Radio Map — Flask backend.
+"""Vibes Radio Map — Flask backend.
 
 Serves the map UI, a station list API backed by stations.json (list, add,
 remove), and a /proxy endpoint that fetches upstream streams with
