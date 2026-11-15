@@ -118,7 +118,7 @@ The README already says it: loopback-only, not pen tested, and
       `requests` grumbled about. Log the detail server-side; return a
       generic message + upstream status code. (This is the backend half of
       the "smarter error messages" usability item.)
-- [ ] **CDN supply chain.** The page loads leaflet 1.9.4 +
+- [x] **CDN supply chain.** The page loads leaflet 1.9.4 +
       leaflet.markercluster 1.5.3 from unpkg and hls.js 1.5.13 from
       jsdelivr with no `integrity` (index.html:8–9, 242–244). For a
       local-only app the clean fix is to **vendor the files into
