@@ -24,11 +24,21 @@ BROWSER_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
-DEFAULT_REFERER = "https://www.bbc.co.uk"
-
 app = Flask(__name__)
 session = requests.Session()
-session.headers.update({"User-Agent": BROWSER_UA, "Referer": DEFAULT_REFERER})
+session.headers.update({"User-Agent": BROWSER_UA})
+
+
+def referer_header(url):
+    """A browser-plausible Referer derived from *url*'s own origin.
+
+    Some stream hosts reject requests without a Referer "from their site";
+    claiming the stream's own origin is the least weird thing to send.
+    """
+    p = urlparse(url)
+    if p.scheme in ("http", "https") and p.netloc:
+        return {"Referer": f"{p.scheme}://{p.netloc}/"}
+    return {}
 
 _lock = threading.Lock()
 
@@ -199,7 +209,7 @@ def _recover_stw_variant(url):
         + ".m3u8"
     )
     try:
-        master = session.get(redirector, timeout=(6, 30))
+        master = session.get(redirector, headers=referer_header(redirector), timeout=(6, 30))
     except requests.RequestException:
         return None
     if master.status_code != 200 or b"#EXTM3U" not in master.content[:1024]:
@@ -218,7 +228,7 @@ def _recover_stw_variant(url):
     if not variants or idx >= len(variants):
         return None
     try:
-        variant = session.get(variants[idx], timeout=(6, 30))
+        variant = session.get(variants[idx], headers=referer_header(variants[idx]), timeout=(6, 30))
     except requests.RequestException:
         return None
     if variant.status_code != 200 or b"#EXTM3U" not in variant.content[:1024]:
@@ -243,7 +253,7 @@ def proxy():
         return jsonify(error="this host is not allowed"), 403
 
     try:
-        upstream = session.get(url, stream=True, timeout=(6, 60))
+        upstream = session.get(url, headers=referer_header(url), stream=True, timeout=(6, 60))
     except requests.RequestException as exc:
         recovered = _recover_stw_variant(url)
         if recovered is not None:
