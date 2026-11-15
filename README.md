@@ -17,11 +17,12 @@ vibe.
 
 - **It has not been pen tested or security-tested in any way.** No audit, no
   hardening, no bug bounty — it's a vibe-coded toy, not a hardened web
-  service: no authentication, no rate limiting. The streaming endpoints are
+  service: no user accounts, no rate limiting. The streaming endpoints are
   scoped to the stations in `stations.json` (there is no free-form URL
-  proxy), but the add/remove-stations API is still unauthenticated. That is
-  exactly the kind of thing that gets abused the moment it's reachable from
-  the public internet (SSRF, resource abuse, …).
+  proxy), and the add/remove-stations API is protected by a local write
+  token plus a loopback Origin/Referer check — but none of that is a
+  substitute for keeping the app off the public internet, where even this
+  setup gets abused (SSRF, resource abuse, …).
 - **The vibe coder takes no responsibility whatsoever** — human or machine —
   for anything that happens if you expose this app to the internet or to a
   network you don't fully control. If you do that, it's on you, and don't
@@ -74,6 +75,18 @@ python app.py
 
 Then open <http://127.0.0.1:5000> and pick a station.
 
+The web UI already handles add/remove. To script the write API yourself,
+send the write token as the `X-Vibes-Token` header (or a `?token=` query
+param); it's printed at startup and stored in `.vibes_token` next to
+`app.py`:
+
+```
+curl -X POST http://127.0.0.1:5000/api/stations \
+  -H "X-Vibes-Token: $(cat .vibes_token)" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Station", "stream": "https://example.com/stream.mp3"}'
+```
+
 (Loopback only, on purpose — see the warning above. Do not port-forward,
 reverse-proxy, or otherwise expose it to the internet.)
 
@@ -83,8 +96,8 @@ reverse-proxy, or otherwise expose it to the internet.)
 | --- | --- |
 | `GET /` | The map UI (`templates/index.html`) |
 | `GET /api/stations` | The station list (reads `stations.json` on every request) |
-| `POST /api/stations` | Add a station (JSON body: `name`, `stream`, plus optional `frequency`, `codec`, `country`, `region`, `city`, `logo`, `lat`/`lng`, `hls`). Returns `201` with the created station. |
-| `DELETE /api/stations/<id>` | Remove a station by id. Returns `404` if it doesn't exist. |
+| `POST /api/stations` | Add a station (JSON body: `name`, `stream`, plus optional `frequency`, `codec`, `country`, `region`, `city`, `logo`, `lat`/`lng`, `hls`). Requires the write token (`X-Vibes-Token` header or `?token=`); any present `Origin`/`Referer` must be `127.0.0.1`/`localhost`. Returns `201` with the created station. |
+| `DELETE /api/stations/<id>` | Remove a station by id. Same token + loopback check as `POST`. Returns `404` if it doesn't exist. |
 | `GET /station/<id>/stream` | Fetch the station's upstream stream with a browser User-Agent + Referer; HLS playlists (`#EXTM3U`) are rewritten so every segment routes through `/seg`. |
 | `GET /station/<id>/logo` | Fetch the station's logo image (same CORS/Referer reasons as the stream). |
 | `GET /seg` | Serve one upstream segment via a signed, time-limited token (`u`, `exp`, `sig` query params); the signature is verified before anything is fetched. |
@@ -108,6 +121,7 @@ modest local use, which this app fits comfortably.
 | `templates/index.html` | The entire frontend: map, sidebar, player, clustering (one file, zero build step) |
 | `stations.json` | The curated station list — edit it to change what's on the map (re-read on every request, no restart needed) |
 | `requirements.txt` | Two Python packages: `flask` and `requests` |
+| `.vibes_token` | The write-API token, generated on first run and git-ignored — needed only if you script the add/remove API |
 
 ## Notes
 
@@ -120,6 +134,10 @@ modest local use, which this app fits comfortably.
 - There is no free-form URL proxy: the backend only fetches the stream and
   logo URLs of stations listed in `stations.json`, so there's no SSRF surface
   to begin with.
+- The add/remove API is token-gated and CSRF-checked: a random token is
+  generated on first run (printed at startup, stored in `.vibes_token`), and
+  any request whose `Origin`/`Referer` isn't loopback is rejected even with a
+  valid token — a malicious page in the same browser can't drive the API.
 - Run it on `127.0.0.1` (the default). It binds to loopback only — don't
   expose it to the internet as-is. It has **not** been pen tested, and the
   vibe coder takes no responsibility for what happens if you do. See the

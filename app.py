@@ -14,6 +14,7 @@ import hmac
 import json
 import os
 import re
+import secrets
 import threading
 import time
 from urllib.parse import quote, urljoin, urlparse
@@ -46,6 +47,62 @@ def get_session() -> requests.Session:
         s.headers.update({"User-Agent": BROWSER_UA})
         _sessions.session = s
     return s
+
+
+# The write API (add/remove station) requires a local secret token. It is
+# generated once on first run, persisted in .vibes_token next to the app,
+# and printed at startup. The app is bound to 127.0.0.1, so the token is
+# the main thing stopping a malicious page opened in this same browser from
+# calling the API; the Origin/Referer check below is a second layer.
+TOKEN_FILE = os.path.join(BASE_DIR, ".vibes_token")
+
+
+def _load_token() -> str:
+    """Load the write-API token, generating and persisting it on first run."""
+    try:
+        with open(TOKEN_FILE, encoding="utf-8") as f:
+            t = f.read().strip()
+        if t:
+            return t
+    except OSError:
+        pass
+    t = secrets.token_hex(32)
+    try:
+        with open(TOKEN_FILE, "w", encoding="utf-8") as f:
+            f.write(t)
+    except OSError:
+        pass  # in-memory token still works; it just won't survive a restart
+    return t
+
+
+TOKEN = _load_token()
+
+_ALLOWED_ORIGIN_HOSTS = ("127.0.0.1", "localhost")
+
+
+def _check_write_auth():
+    """Gate for POST/DELETE /api/stations.
+
+    A valid token (X-Vibes-Token header or token query param) is always
+    required. If an Origin or Referer header is present, its host must be
+    the loopback interface — that stops a page on some other host from
+    driving the API (CSRF), even if it somehow learned the token. Requests
+    with neither header (e.g. curl) are fine with just the token.
+
+    Returns None when the request is allowed, else a (response, status)
+    tuple to return to the client.
+    """
+    token = request.headers.get("X-Vibes-Token") or request.args.get("token")
+    if not token or not hmac.compare_digest(token, TOKEN):
+        return jsonify(error="invalid or missing token"), 401
+    for header in ("Origin", "Referer"):
+        value = request.headers.get(header)
+        if not value:
+            continue
+        if urlparse(value).hostname not in _ALLOWED_ORIGIN_HOSTS:
+            return jsonify(error="forbidden origin"), 403
+    return None
+
 
 # Segment URLs handed to the player are short-lived signed tokens, not an
 # open "fetch me anything" endpoint: anyone who learns a segment URL can
@@ -92,7 +149,10 @@ def slugify(name):
 
 @app.get("/")
 def index():
-    return render_template("index.html")
+    # The token is safe to put in the page: the server only listens on
+    # 127.0.0.1, so only local code can read it, and the CSRF check below
+    # blocks any non-local page that tries to use it.
+    return render_template("index.html", token=TOKEN)
 
 
 @app.get("/api/stations")
@@ -103,6 +163,9 @@ def api_list_stations():
 
 @app.post("/api/stations")
 def api_add_station():
+    denied = _check_write_auth()
+    if denied is not None:
+        return denied
     data = request.get_json(silent=True) or {}
     name = str(data.get("name") or "").strip()
     stream = str(data.get("stream") or "").strip()
@@ -159,6 +222,9 @@ def api_add_station():
 
 @app.delete("/api/stations/<station_id>")
 def api_delete_station(station_id):
+    denied = _check_write_auth()
+    if denied is not None:
+        return denied
     with _lock:
         stations = load_stations()
         remaining = [s for s in stations if s.get("id") != station_id]
@@ -414,4 +480,9 @@ def _stream_response(body, ctype, upstream=None):
 
 
 if __name__ == "__main__":
+    print(
+        "Write-API token (for X-Vibes-Token header or ?token=): "
+        f"{TOKEN}\n"
+        "Stored in .vibes_token — shown once, keep it to yourself."
+    )
     app.run(host="127.0.0.1", port=5000, threaded=True)

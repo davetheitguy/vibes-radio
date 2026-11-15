@@ -106,7 +106,7 @@ The README already says it: loopback-only, not pen tested, and
       (app.py:28) is shared across all worker threads. Per-thread sessions
       (or one per request) remove the shared-mutable-state class of bug
       entirely.
-- [ ] **Auth on the write API.** `POST`/`DELETE /api/stations`
+- [x] **Auth on the write API.** `POST`/`DELETE /api/stations`
       (app.py:85/141) mutate `stations.json` with zero auth — any tab or
       script on the machine (or anything that can reach the port) can
       rewrite or nuke the list. Add a local secret token (header or query

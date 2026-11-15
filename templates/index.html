@@ -245,6 +245,7 @@
 <script>
 "use strict";
 const $ = (s) => document.querySelector(s);
+const WRITE_TOKEN = "{{ token }}";
 const audio = new Audio();
 audio.preload = "none";
 audio.volume = 0.8;
@@ -616,7 +617,7 @@ document.addEventListener("keydown", (e) => {
     try {
       const r = await fetch("/api/stations", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Vibes-Token": WRITE_TOKEN },
         body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "HTTP " + r.status);
@@ -649,7 +650,10 @@ document.addEventListener("keydown", (e) => {
     closeDelete();
     if (!st) return;
     try {
-      const r = await fetch("/api/stations/" + st.id, { method: "DELETE" });
+      const r = await fetch("/api/stations/" + st.id, {
+        method: "DELETE",
+        headers: { "X-Vibes-Token": WRITE_TOKEN },
+      });
       if (!r.ok && r.status !== 404) throw new Error("HTTP " + r.status);
       if (current === st.id) stopPlayback();
       stations = stations.filter((s) => s.id !== st.id);
