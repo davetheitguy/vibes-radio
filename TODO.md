@@ -20,7 +20,7 @@ the code as of this writing; they'll drift.
       sanitized reason + upstream status (see Security below) and surface it,
       plus a one-click **Retry** in the status bar instead of re-clicking the
       pin.
-- [ ] **Surprise me 🎲.** One button, pick a random station that passes the
+- [x] **Surprise me 🎲.** One button, pick a random station that passes the
       current filters, play it. This whole app is a vibe machine; give it a
       dice roller.
 - [ ] **Click-the-map to place a pin.** The add-station form demands hand-

@@ -91,6 +91,10 @@
     background:var(--accent);color:#0b1120;font-size:16px;
     display:flex;align-items:center;justify-content:center}
   #play-btn:hover{filter:brightness(1.12)}
+  #surprise-btn{width:40px;height:40px;border-radius:50%;border:none;background:var(--panel2);
+    color:var(--text);font-size:18px;line-height:1;cursor:pointer;
+    transition:transform .15s,background .15s,color .15s}
+  #surprise-btn:hover{background:var(--accent);color:#0b1120;transform:rotate(20deg) scale(1.05)}
   #retry-btn{flex:none;border:none;border-radius:999px;cursor:pointer;
     padding:7px 15px;font-size:12.5px;font-weight:600;
     background:var(--accent);color:#0b1120}
@@ -193,6 +197,7 @@
   <div id="status" role="status"></div>
 
   <div id="player">
+    <button id="surprise-btn" title="Surprise me — play a random station (respects your filters)" aria-label="Surprise me">&#127922;</button>
     <button id="play-btn" title="Play / Pause">&#9654;</button>
     <div class="info">
       <div class="p-name"><span id="eq" hidden><i></i><i></i><i></i></span><span id="p-title">Nothing playing</span></div>
@@ -614,6 +619,24 @@ $("#retry-btn").addEventListener("click", () => {
   const st = stations.find((s) => s.id === current);
   if (st) startPlayback(st);
 });
+
+function surpriseMe() {
+  const pool = visible();
+  if (!pool.length) {
+    showStatus("error", "No stations match your filters \u2014 try clearing the search or picking a broader region.");
+    return;
+  }
+  // With 2+ matches, never re-roll the station already selected
+  const candidates = pool.length > 1 ? pool.filter((s) => s.id !== current) : pool;
+  const st = candidates[Math.floor(Math.random() * candidates.length)];
+  startPlayback(st);
+  const bits = [st.name];
+  if (st.frequency) bits.push(st.frequency);
+  if (st.city) bits.push(st.city);
+  showStatus("ok", "Surprise me: " + bits.join(" \u00b7 "), 2500);
+}
+
+$("#surprise-btn").addEventListener("click", surpriseMe);
 
 $("#play-btn").addEventListener("click", () => {
   if (current) {
