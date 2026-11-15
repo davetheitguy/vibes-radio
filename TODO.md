@@ -113,7 +113,7 @@ The README already says it: loopback-only, not pen tested, and
       param, generated on first run and shown once) **plus** an
       Origin/Referer check against `127.0.0.1` so cross-origin pages can't
       post to it (CSRF).
-- [ ] **Stop leaking internals in errors.** app.py:261 returns the raw
+- [x] **Stop leaking internals in errors.** app.py:261 returns the raw
       exception text to the client — hostnames, internal paths, whatever
       `requests` grumbled about. Log the detail server-side; return a
       generic message + upstream status code. (This is the backend half of

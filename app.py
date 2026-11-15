@@ -365,14 +365,27 @@ def _fetch_and_rewrite(url):
         recovered = _recover_stw_variant(url)
         if recovered is not None:
             return recovered
-        return jsonify(error=f"upstream request failed: {exc}"), 502
+        # Log the real cause server-side; never echo exception text to the
+        # client — it can carry hostnames, internal paths, credentials.
+        app.logger.warning("upstream request failed for %s: %r", url, exc)
+        if isinstance(exc, requests.exceptions.Timeout):
+            error = "upstream request timed out"
+        elif isinstance(exc, requests.exceptions.ConnectionError):
+            error = "could not reach upstream"
+        else:
+            error = "upstream request failed"
+        return jsonify(error=error), 502
     if upstream.status_code >= 400:
         recovered = _recover_stw_variant(url)
         if recovered is not None:
             upstream.close()
             return recovered
         upstream.close()
-        return jsonify(error=f"upstream returned HTTP {upstream.status_code}"), 502
+        return (
+            jsonify(error=f"upstream returned HTTP {upstream.status_code}",
+                    upstream_status=upstream.status_code),
+            502,
+        )
 
     ctype = upstream.headers.get("Content-Type", "")
     base_url = upstream.url  # final URL after redirects
