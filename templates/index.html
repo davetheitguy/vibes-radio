@@ -91,6 +91,10 @@
     background:var(--accent);color:#0b1120;font-size:16px;
     display:flex;align-items:center;justify-content:center}
   #play-btn:hover{filter:brightness(1.12)}
+  #retry-btn{flex:none;border:none;border-radius:999px;cursor:pointer;
+    padding:7px 15px;font-size:12.5px;font-weight:600;
+    background:var(--accent);color:#0b1120}
+  #retry-btn:hover{filter:brightness(1.12)}
   #player .info{flex:1;min-width:0}
   #player .p-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #player .p-sub{margin-top:1px;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -195,6 +199,7 @@
       <div class="p-sub" id="p-sub">Pick a station to start</div>
     </div>
     <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8" title="Volume">
+    <button id="retry-btn" hidden title="Re-fetch and play this station">Retry</button>
   </div>
 
   <div id="add-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="add-title">
@@ -484,6 +489,7 @@ function stopPlayback() {
   audio.removeAttribute("src");
   audio.load();
   current = null;
+  hideRetry();
   $("#p-title").textContent = "Nothing playing";
   $("#p-sub").textContent = "Pick a station to start";
   refreshPlayBtn();
@@ -496,6 +502,7 @@ function startPlayback(st) {
   audio.pause();
   audio.removeAttribute("src");
   current = st.id;
+  hideRetry();
   centerOn(st);
   bufferingSub = null; // drop any saved sub left over from a previous station
   $("#eq").classList.remove("buffering");
@@ -512,11 +519,19 @@ function startPlayback(st) {
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       audio.play().catch(() => showStatus("error", "Autoplay was blocked \u2014 click the play button."));
     });
-    hls.on(Hls.Events.ERROR, (_evt, data) => {
+    hls.on(Hls.Events.ERROR, async (_evt, data) => {
       if (!data.fatal) return;
       if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
       else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-      else showStatus("error", "HLS error: " + data.details);
+      else {
+        const id = current;
+        const st = id ? stations.find((s) => s.id === id) : null;
+        const detail = st ? await streamErrorDetail(st) : null;
+        if (current === id) {
+          showStatus("error", "HLS error: " + data.details + (detail ? " \u2014 " + detail : ""));
+          showRetry();
+        }
+      }
     });
   } else {
     audio.src = url; // plain MP3/AAC, or native HLS on Safari
@@ -541,7 +556,7 @@ function refreshUI() {
   renderList();
   renderMarkers();
 }
-audio.addEventListener("play", () => { refreshPlayBtn(); refreshUI(); });
+audio.addEventListener("play", () => { refreshPlayBtn(); refreshUI(); hideRetry(); });
 audio.addEventListener("pause", () => { refreshPlayBtn(); refreshUI(); });
 // Buffering: the stream is alive but data is slow. We deliberately don't use
 // #status for it (that would clobber the error toast), so it shows in the
@@ -563,9 +578,41 @@ audio.addEventListener("waiting", () => setBuffering(true));
 audio.addEventListener("stalled", () => setBuffering(true));
 audio.addEventListener("playing", () => setBuffering(false));
 audio.addEventListener("pause", () => setBuffering(false));
-audio.addEventListener("error", () => {
+// When a stream dies the <audio> error event carries no HTTP reason, so probe
+// the same proxied URL with fetch() and surface what the server actually saw.
+async function streamErrorDetail(st) {
+  try {
+    const res = await fetch(proxied(st), { cache: "no-store" });
+    if (res.ok) return null; // stream is fine again — fall back to the generic message
+    const body = await res.json().catch(() => null);
+    if (body && body.error) {
+      let msg = String(body.error);
+      if (body.upstream_status != null && !/HTTP \d+/.test(msg))
+        msg += " (upstream HTTP " + body.upstream_status + ")";
+      return msg;
+    }
+    return "upstream HTTP " + res.status;
+  } catch (e) {
+    return "could not reach upstream";
+  }
+}
+function showRetry() { $("#retry-btn").hidden = false; }
+function hideRetry() { $("#retry-btn").hidden = true; }
+audio.addEventListener("error", async () => {
   setBuffering(false);
-  if (current) showStatus("error", "Stream failed \u2014 the URL may be down, or the server blocked it.");
+  if (!current) return;
+  const id = current;
+  const st = stations.find((s) => s.id === id);
+  const detail = st ? await streamErrorDetail(st) : null;
+  if (current !== id) return; // station changed while probing — don't clobber the new state
+  showStatus("error", "Stream failed \u2014 " + (detail || "the URL may be down, or the server blocked it.") + ".");
+  showRetry();
+});
+
+$("#retry-btn").addEventListener("click", () => {
+  if (!current) return;
+  const st = stations.find((s) => s.id === current);
+  if (st) startPlayback(st);
 });
 
 $("#play-btn").addEventListener("click", () => {

@@ -13,7 +13,7 @@ the code as of this writing; they'll drift.
       error. There's no listener for `waiting`/`playing`/`stalled` on the
       audio element (index.html:539ff). Add a "buffering…" status (and maybe
       dim the EQ bars) so a slow station doesn't feel broken.
-- [ ] **Smarter error messages + a Retry button.** Today every failure is
+- [x] **Smarter error messages + a Retry button.** Today every failure is
       the same generic toast ("Stream failed — the URL may be down, or the
       server blocked it.", index.html:542). The proxy *does* know the real
       reason — it catches the upstream exception (app.py:261). Return a
