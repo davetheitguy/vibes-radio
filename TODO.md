@@ -102,7 +102,7 @@ The README already says it: loopback-only, not pen tested, and
          every resolved IP in private/link-local/CGNAT ranges
          (incl. 169.254/16, 100.64/10), and **re-validate on every redirect
          hop** via a redirect hook.
-- [ ] **Thread-local `requests.Session`.** The global session
+- [x] **Thread-local `requests.Session`.** The global session
       (app.py:28) is shared across all worker threads. Per-thread sessions
       (or one per request) remove the shared-mutable-state class of bug
       entirely.

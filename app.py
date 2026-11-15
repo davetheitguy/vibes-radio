@@ -29,8 +29,23 @@ BROWSER_UA = (
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
 app = Flask(__name__)
-session = requests.Session()
-session.headers.update({"User-Agent": BROWSER_UA})
+_sessions = threading.local()
+
+
+def get_session() -> requests.Session:
+    """Thread-local requests.Session.
+
+    Flask runs with threaded=True (one worker thread per request), and
+    requests.Session is not thread-safe — its connection pool and cookie
+    jar assume single-thread use. Each worker thread therefore gets its
+    own session, created lazily on first use.
+    """
+    s = getattr(_sessions, "session", None)
+    if s is None:
+        s = requests.Session()
+        s.headers.update({"User-Agent": BROWSER_UA})
+        _sessions.session = s
+    return s
 
 # Segment URLs handed to the player are short-lived signed tokens, not an
 # open "fetch me anything" endpoint: anyone who learns a segment URL can
@@ -239,7 +254,7 @@ def _recover_stw_variant(url):
         + ".m3u8"
     )
     try:
-        master = session.get(redirector, headers=referer_header(redirector), timeout=(6, 30))
+        master = get_session().get(redirector, headers=referer_header(redirector), timeout=(6, 30))
     except requests.RequestException:
         return None
     if master.status_code != 200 or b"#EXTM3U" not in master.content[:1024]:
@@ -258,7 +273,7 @@ def _recover_stw_variant(url):
     if not variants or idx >= len(variants):
         return None
     try:
-        variant = session.get(variants[idx], headers=referer_header(variants[idx]), timeout=(6, 30))
+        variant = get_session().get(variants[idx], headers=referer_header(variants[idx]), timeout=(6, 30))
     except requests.RequestException:
         return None
     if variant.status_code != 200 or b"#EXTM3U" not in variant.content[:1024]:
@@ -278,8 +293,8 @@ def _fetch_and_rewrite(url):
     else is streamed straight through.
     """
     try:
-        upstream = session.get(url, headers=referer_header(url),
-                               stream=True, timeout=(6, 60))
+        upstream = get_session().get(url, headers=referer_header(url),
+                                     stream=True, timeout=(6, 60))
     except requests.RequestException as exc:
         recovered = _recover_stw_variant(url)
         if recovered is not None:
@@ -342,8 +357,8 @@ def station_logo(station_id):
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         return "", 400
     try:
-        upstream = session.get(logo, headers=referer_header(logo),
-                               stream=True, timeout=(6, 30))
+        upstream = get_session().get(logo, headers=referer_header(logo),
+                                     stream=True, timeout=(6, 30))
     except requests.RequestException:
         # Frontend falls back to the default radio icon on any error.
         return "", 502
