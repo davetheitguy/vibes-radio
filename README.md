@@ -17,10 +17,11 @@ vibe.
 
 - **It has not been pen tested or security-tested in any way.** No audit, no
   hardening, no bug bounty — it's a vibe-coded toy, not a hardened web
-  service: no authentication, no rate limiting, and a `GET /proxy?url=...`
-  endpoint that fetches whatever it's asked to fetch. That is exactly the kind
-  of thing that gets abused the moment it's reachable from the public
-  internet (open proxy, SSRF, resource abuse, …).
+  service: no authentication, no rate limiting. The streaming endpoints are
+  scoped to the stations in `stations.json` (there is no free-form URL
+  proxy), but the add/remove-stations API is still unauthenticated. That is
+  exactly the kind of thing that gets abused the moment it's reachable from
+  the public internet (SSRF, resource abuse, …).
 - **The vibe coder takes no responsibility whatsoever** — human or machine —
   for anything that happens if you expose this app to the internet or to a
   network you don't fully control. If you do that, it's on you, and don't
@@ -59,9 +60,10 @@ Most radio streams refuse to play directly in a browser: they're blocked by
 CORS, or the server demands a browser User-Agent and a Referer it recognizes.
 So the Flask backend fetches each stream **server-side with browser-like
 headers** and pipes the bytes back to your browser. HLS playlists are
-rewritten so that every audio segment also routes through the proxy — and if
-a StreamTheWorld session token expires mid-play, the backend re-mints a fresh
-one automatically. You never notice; that's the point.
+rewritten so that every audio segment also routes through the backend via a
+signed, time-limited `/seg` URL — and if a StreamTheWorld session token
+expires mid-play, the backend re-mints a fresh one automatically. You never
+notice; that's the point.
 
 ## Quick start
 
@@ -83,7 +85,9 @@ reverse-proxy, or otherwise expose it to the internet.)
 | `GET /api/stations` | The station list (reads `stations.json` on every request) |
 | `POST /api/stations` | Add a station (JSON body: `name`, `stream`, plus optional `frequency`, `codec`, `country`, `region`, `city`, `logo`, `lat`/`lng`, `hls`). Returns `201` with the created station. |
 | `DELETE /api/stations/<id>` | Remove a station by id. Returns `404` if it doesn't exist. |
-| `GET /proxy?url=...` | Fetch an upstream stream (or logo image) with a browser User-Agent + Referer; HLS playlists (`#EXTM3U`) are rewritten so all segments also route through the proxy. Private/loopback hosts are refused (SSRF guard). |
+| `GET /station/<id>/stream` | Fetch the station's upstream stream with a browser User-Agent + Referer; HLS playlists (`#EXTM3U`) are rewritten so every segment routes through `/seg`. |
+| `GET /station/<id>/logo` | Fetch the station's logo image (same CORS/Referer reasons as the stream). |
+| `GET /seg` | Serve one upstream segment via a signed, time-limited token (`u`, `exp`, `sig` query params); the signature is verified before anything is fetched. |
 
 `stations.json` is the single source of truth for the station list. It's read
 on every request (no restart needed), and it's the only place the UI's
@@ -100,24 +104,25 @@ modest local use, which this app fits comfortably.
 
 | File | What it is |
 | --- | --- |
-| `app.py` | The entire Flask backend: routes, proxy, HLS rewriting, STW recovery |
+| `app.py` | The entire Flask backend: routes, station-scoped streaming, signed segments, HLS rewriting, STW recovery |
 | `templates/index.html` | The entire frontend: map, sidebar, player, clustering (one file, zero build step) |
 | `stations.json` | The curated station list — edit it to change what's on the map (re-read on every request, no restart needed) |
 | `requirements.txt` | Two Python packages: `flask` and `requests` |
 
 ## Notes
 
-- Playback is routed through the proxy, so your browser never talks to the
+- Playback is routed through the backend, so your browser never talks to the
   radio servers directly.
 - The six big commercial Montréal stations (Énergie, Virgin, Classik, Café
   Musique, L'Écho, Rock Détour) could not be found with public stream URLs on
   the Radio Browser directory; the curated list contains the 20 stations that
   actually work.
-- The proxy refuses private/loopback hostnames (SSRF guard), so it's safe to
-  point at `stations.json`-listed public streams only.
+- There is no free-form URL proxy: the backend only fetches the stream and
+  logo URLs of stations listed in `stations.json`, so there's no SSRF surface
+  to begin with.
 - Run it on `127.0.0.1` (the default). It binds to loopback only — don't
-  expose the proxy to the internet as-is. It has **not** been pen tested, and
-  the vibe coder takes no responsibility for what happens if you do. See the
+  expose it to the internet as-is. It has **not** been pen tested, and the
+  vibe coder takes no responsibility for what happens if you do. See the
   warning at the top of this file.
 
 ---
