@@ -28,7 +28,7 @@ the code as of this writing; they'll drift.
       (index.html:600). In add-mode, clicking the map should drop a draggable
       marker and fill the fields in. (Reverse geocoding would be a stretch
       goal, not required.)
-- [ ] **Remember me (localStorage).** Nothing persists today (verified:
+- [x] **Remember me (localStorage).** Nothing persists today (verified:
       zero `localStorage` matches in the template). Save + restore: volume,
       search query, active region filter, and last-played station. Cheap
       win, big "it's mine now" feeling.

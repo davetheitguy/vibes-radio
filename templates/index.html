@@ -280,6 +280,17 @@ const WRITE_TOKEN = "{{ token }}";
 const audio = new Audio();
 audio.preload = "none";
 audio.volume = 0.8;
+// Remember me (US5): restore saved volume, clamped to 0..1
+{
+  const savedVol = lsGet("vibes.volume", "");
+  if (savedVol !== "") {
+    const v = parseFloat(savedVol);
+    if (Number.isFinite(v)) {
+      audio.volume = Math.min(1, Math.max(0, v));
+      $("#vol").value = String(audio.volume);
+    }
+  }
+}
 
 let stations = [];
 let markers = new Map();
@@ -288,6 +299,20 @@ let current = null;      // id of selected station
 let hls = null;
 let statusTimer = null;
 let filters = { country: "", region: "", city: "", search: "" };
+
+// Remember me (US5): localStorage helpers, private-mode safe (function declarations: hoisted)
+function lsGet(key, fallback) {
+  try {
+    const v = window.localStorage.getItem(key);
+    return v === null ? fallback : v;
+  } catch (e) { return fallback; }
+}
+function lsSet(key, value) {
+  try { window.localStorage.setItem(key, String(value)); } catch (e) {}
+}
+function lsDel(key) {
+  try { window.localStorage.removeItem(key); } catch (e) {}
+}
 
 const map = L.map("map");
 // Default center if geolocation fails
@@ -526,6 +551,7 @@ function startPlayback(st) {
   audio.pause();
   audio.removeAttribute("src");
   current = st.id;
+  lsSet("vibes.last", st.id);
   hideRetry();
   centerOn(st);
   bufferingSub = null; // drop any saved sub left over from a previous station
@@ -671,13 +697,15 @@ $("#play-btn").addEventListener("click", () => {
 $("#vol").addEventListener("input", (e) => {
   audio.volume = parseFloat(e.target.value);
   audio.muted = false;
+  lsSet("vibes.volume", e.target.value);
 });
 
 ["f-country", "f-region", "f-city"].forEach((id) =>
-  $("#" + id).addEventListener("change", applyFilters));
+  $("#" + id).addEventListener("change", () => { applyFilters(); lsSet("vibes.region", filters.region); }));
 
 $("#f-search").addEventListener("input", (e) => {
   filters.search = e.target.value;
+  lsSet("vibes.search", filters.search);
   renderList();
   renderMarkers();
 });
@@ -823,7 +851,30 @@ document.addEventListener("keydown", (e) => {
     showStatus("error", "Could not load stations: " + e.message);
     return;
   }
+  // Remember me (US5): restore saved search query and region filter
+  const savedSearch = lsGet("vibes.search", "");
+  if (savedSearch) {
+    $("#f-search").value = savedSearch;
+    filters.search = savedSearch;
+  }
+  const savedRegion = lsGet("vibes.region", "");
+  if (savedRegion) $("#f-region").value = savedRegion;
   applyFilters();
+  // fillSelect() resets the region if it no longer exists among stations — drop the stale key
+  if (savedRegion && $("#f-region").value !== savedRegion) lsDel("vibes.region");
+  // Restore last-played station (selection + highlight only; no autoplay)
+  const savedLast = lsGet("vibes.last", "");
+  if (savedLast) {
+    const st = stations.find((s) => s.id === savedLast);
+    if (st) {
+      current = st.id;
+      refreshPlayBtn();
+      renderList();
+      renderMarkers();
+    } else {
+      lsDel("vibes.last");
+    }
+  }
   refreshPlayBtn();
 })();
 </script>
