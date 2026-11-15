@@ -23,7 +23,7 @@ the code as of this writing; they'll drift.
 - [x] **Surprise me 🎲.** One button, pick a random station that passes the
       current filters, play it. This whole app is a vibe machine; give it a
       dice roller.
-- [ ] **Click-the-map to place a pin.** The add-station form demands hand-
+- [x] **Click-the-map to place a pin.** The add-station form demands hand-
       typed lat/lng with a "Provide both, or neither" validation
       (index.html:600). In add-mode, clicking the map should drop a draggable
       marker and fill the fields in. (Reverse geocoding would be a stretch

@@ -76,6 +76,15 @@
     0%{transform:translate(-50%,-50%) scale(.5);opacity:.85}
     70%,100%{transform:translate(-50%,-50%) scale(1.6);opacity:0}
   }
+  /* Draggable drop pin used while adding a station (placed by clicking the map) */
+  .drop-pin{width:40px;height:40px;position:relative;cursor:grab}
+  .drop-pin:active{cursor:grabbing}
+  .drop-pin span{position:absolute;left:50%;top:50%;width:26px;height:26px;
+    transform:translate(-50%,-50%);border-radius:50%;background:var(--accent);
+    border:3px solid #dceaff;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+  .drop-pin::after{content:"";position:absolute;left:50%;top:20px;width:44px;height:44px;
+    border-radius:50%;border:2px solid var(--accent);pointer-events:none;
+    animation:pin-ping 1.8s ease-out infinite}
 
   .cluster-badge{width:46px;height:46px;border-radius:50%;
     background:rgba(27,35,54,.95);border:2px solid var(--accent);color:var(--text);
@@ -144,6 +153,13 @@
   .overlay{position:fixed;inset:0;z-index:900;display:none;align-items:center;justify-content:center;
     background:rgba(5,8,14,.6);backdrop-filter:blur(3px)}
   .overlay.show{display:flex}
+  /* Add-station is a non-modal panel docked on the right edge (no dimming
+     backdrop), so the map stays interactive while it is open: you can click
+     the map to drop a pin and drag it to fine-tune the location. */
+  #add-overlay{background:none;backdrop-filter:none;align-items:stretch;justify-content:flex-end}
+  #add-overlay .dialog{width:min(430px,100vw);height:100%;max-height:none;
+    border-radius:14px 0 0 14px;border-right:none;
+    box-shadow:-18px 0 50px rgba(0,0,0,.55)}
   .dialog{width:min(430px,92vw);max-height:90vh;overflow-y:auto;background:var(--panel);
     border:1px solid var(--border);border-radius:14px;padding:18px;
     box-shadow:0 18px 50px rgba(0,0,0,.6)}
@@ -171,6 +187,8 @@
     #sidebar{width:100%;height:44%;min-height:180px;bottom:0;border-right:none;border-top:1px solid var(--border)}
     #filters{flex-direction:row;flex-wrap:wrap}
     #filters select, #filters input[type="search"]{width:auto;flex:1 1 92px}
+    /* On phones the side panel takes the full width so the form is usable */
+    #add-overlay .dialog{width:100vw;border-radius:0}
   }
 </style>
 </head>
@@ -207,7 +225,7 @@
     <button id="retry-btn" hidden title="Re-fetch and play this station">Retry</button>
   </div>
 
-  <div id="add-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="add-title">
+  <div id="add-overlay" class="overlay" role="dialog" aria-labelledby="add-title">
     <div class="dialog">
       <h2 id="add-title">Add a station</h2>
       <form id="add-form">
@@ -231,6 +249,7 @@
           <div class="field"><label for="a-lat">Latitude</label><input id="a-lat" type="number" step="any" placeholder="45.42"></div>
           <div class="field"><label for="a-lng">Longitude</label><input id="a-lng" type="number" step="any" placeholder="-75.70"></div>
         </div>
+        <p class="msg">Tip: click the map to drop a pin (drag it to fine-tune) &mdash; or type the coordinates.</p>
         <div class="field"><label class="check" for="a-hls"><input id="a-hls" type="checkbox"> HLS (m3u8) stream</label></div>
         <div class="actions">
           <button type="button" class="btn" id="add-cancel">Cancel</button>
@@ -678,15 +697,48 @@ document.addEventListener("keydown", (e) => {
     'stroke-linecap="round"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>';
 
   const addOverlay = $("#add-overlay");
+  const aLat = $("#a-lat"), aLng = $("#a-lng");
+
+  /* Drop pin: placed by clicking the map while the panel is open; dragging it
+     fine-tunes the location and keeps the Latitude/Longitude fields in sync.
+     It lives on the map itself (never in clusterGroup) so re-renders keep it. */
+  let dropPin = null;
+  function syncDropPin() {
+    if (!dropPin) return;
+    const p = dropPin.getLatLng();
+    aLat.value = p.lat.toFixed(6);
+    aLng.value = p.lng.toFixed(6);
+  }
+  function placeDropPin(lat, lng) {
+    if (dropPin) { dropPin.setLatLng([lat, lng]); }
+    else {
+      dropPin = L.marker([lat, lng], {
+        draggable: true,
+        icon: L.divIcon({ html: "<span></span>", className: "drop-pin", iconSize: [40, 40] })
+      }).addTo(map);
+      dropPin.on("drag dragend", syncDropPin);
+    }
+    syncDropPin();
+  }
+  function hideDropPin() {
+    if (dropPin) { map.removeLayer(dropPin); dropPin = null; }
+  }
+  map.on("click", (e) => {
+    if (addOverlay.classList.contains("show")) placeDropPin(e.latlng.lat, e.latlng.lng);
+  });
+
   function openAdd() {
     $("#add-form").reset();
+    hideDropPin();
     addOverlay.classList.add("show");
     $("#a-name").focus();
   }
-  function closeAdd() { addOverlay.classList.remove("show"); }
+  function closeAdd() {
+    addOverlay.classList.remove("show");
+    hideDropPin();
+  }
   $("#add-fab").addEventListener("click", openAdd);
   $("#add-cancel").addEventListener("click", closeAdd);
-  addOverlay.addEventListener("click", (e) => { if (e.target === addOverlay) closeAdd(); });
 
   $("#add-form").addEventListener("submit", async (e) => {
     e.preventDefault();
