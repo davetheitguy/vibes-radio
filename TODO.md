@@ -123,7 +123,7 @@ The README already says it: loopback-only, not pen tested, and
       jsdelivr with no `integrity` (index.html:8–9, 242–244). For a
       local-only app the clean fix is to **vendor the files into
       `/static`** and load them locally. Fallback: add SRI hashes.
-- [ ] **Basic security headers.** Nothing is set today. Add
+- [x] **Basic security headers.** Nothing is set today. Add
       `X-Content-Type-Options: nosniff`, a `Referrer-Policy`, and a CSP.
       CSP note: the map tiles and (until vendored) CDN scripts are remote,
       and there's inline JS — a first pass will need `unsafe-inline` or a

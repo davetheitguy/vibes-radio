@@ -49,6 +49,40 @@ def get_session() -> requests.Session:
     return s
 
 
+# Basic security headers on every response. The CSP is strict because the
+# page only needs same-origin resources plus one exception set:
+#  - 'unsafe-inline' for script-src/style-src: index.html has an inline
+#    <style> and an inline <script> block (the JS is written inline rather
+#    than split out, so this is the pragmatic exception);
+#  - img-src: data: (the inline radio-icon SVG data URI) and the OpenStreetMap
+#    tile host, the only remote images;
+#  - worker-src: hls.js spawns blob: workers for transmuxing.
+# Referrer-Policy: no-referrer keeps any ?token= or X-Vibes-Token context from
+# ever leaking into a Referrer header if a request does go third-party.
+CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: https://tile.openstreetmap.org; "
+    "connect-src 'self'; "
+    "media-src 'self'; "
+    "font-src 'self' data:; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none'; "
+    "worker-src 'self' blob:"
+)
+
+
+@app.after_request
+def _security_headers(resp):
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Content-Security-Policy"] = CSP
+    return resp
+
+
 # The write API (add/remove station) requires a local secret token. It is
 # generated once on first run, persisted in .vibes_token next to the app,
 # and printed at startup. The app is bound to 127.0.0.1, so the token is
