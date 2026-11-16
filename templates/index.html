@@ -51,7 +51,7 @@
   .station .name{display:block;font-size:13px;padding-right:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .station .tags{margin-top:2px;font-size:11px;color:var(--muted)}
   #map{position:absolute;top:0;bottom:0;left:340px;right:0;background:#0a0e16;overflow:hidden}
-  #map canvas{display:block;transform:translateX(-60px)}
+  #map canvas{display:block}
 
   #player{position:absolute;left:calc(340px + 16px);right:16px;bottom:18px;z-index:500;
     display:flex;align-items:center;gap:14px;padding:10px 16px;
@@ -319,6 +319,24 @@ globe = new Globe($("#map"))
       syncDropPin(coords.lat, coords.lng);
     }
   });
+
+// Size the canvas to the #map container, not the window (globe.gl defaults
+// to window.innerWidth/innerHeight, which is 340px wider than the map area
+// and pushes the globe off-center). Re-size on window resize to keep it
+// centered.
+function sizeGlobe() {
+  const w = $("#map").clientWidth;
+  const h = $("#map").clientHeight;
+  if (w > 0) globe.width(w);
+  if (h > 0) globe.height(h);
+}
+sizeGlobe();
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(sizeGlobe, 150);
+});
+
 fetch("/static/countries-110m.geojson")
   .then((r) => r.json())
   .then((geo) => {
