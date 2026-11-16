@@ -122,9 +122,8 @@ everything ships in `static/`.
 | `templates/index.html` | The entire frontend: globe, sidebar, player (one file, zero build step) |
 | `stations.json` | The curated station list — edit it to change what's on the globe (re-read on every request, no restart needed) |
 | `static/globe.gl.min.js` | globe.gl v2.46.2 UMD bundle (three.js included), self-hosted — no CDN |
-| `static/img/` | Local Earth textures: blue marble, topology bump map, night lights |
-| `static/countries-50m.geojson` | Natural Earth country outlines (fine), bundled locally |
-| `static/countries-110m.geojson` | Natural Earth country outlines (coarse fallback) |
+| `static/img/` | Local Earth textures: blue marble, topology bump map |
+| `static/countries-110m.geojson` | Natural Earth country outlines, bundled locally |
 | `requirements.txt` | Two Python packages: `flask` and `requests` |
 | `.vibes_token` | The write-API token, generated on first run and git-ignored — needed only if you script the add/remove API |
 
