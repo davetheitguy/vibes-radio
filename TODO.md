@@ -47,6 +47,8 @@ the code as of this writing; they'll drift.
 - [ ] **Empty states.** Zero results right now is a quiet empty map + empty
       list. Say something human: "no stations match that vibe — try
       clearing a filter."
+- [ ] **Edit stations.** Add the ability to allow the user to edit stations.
+      For the moment, the only options are add or delete. 
 - [ ] *(already done, do NOT re-add)* Volume slider exists (index.html:195)
       and Space-to-play exists. These are fine as-is.
 

@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vibes Radio Map</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-<link rel="stylesheet" href="/static/leaflet.css">
-<link rel="stylesheet" href="/static/MarkerCluster.css">
 <style>
   :root{
     --bg:#0f1420; --panel:#151c2c; --panel2:#1b2336; --text:#e8ecf4; --muted:#8b96ab;
@@ -52,48 +50,8 @@
   .station .meta{flex:1;min-width:0}
   .station .name{display:block;font-size:13px;padding-right:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .station .tags{margin-top:2px;font-size:11px;color:var(--muted)}
-  #map{position:absolute;top:0;bottom:0;left:340px;right:0;background:#0a0e16}
-  .leaflet-container{font:inherit}
-  .leaflet-tooltip{background:var(--panel);color:var(--text);border:1px solid var(--border);
-    border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.45)}
-  .leaflet-tooltip-top:before{border-top-color:var(--panel)}
-  .leaflet-bar{border:1px solid var(--border);box-shadow:0 4px 14px rgba(0,0,0,.5)}
-  .leaflet-control-zoom a{background:var(--panel2);color:var(--text);border-bottom:1px solid var(--border)}
-  .leaflet-control-zoom a:hover{background:rgba(79,156,255,.28)}
-  .leaflet-control-zoom a.leaflet-disabled{background:#10151f;color:#46536b}
-  .leaflet-control-attribution{background:rgba(21,28,44,.85)!important;color:var(--muted)!important}
-  .leaflet-control-attribution a{color:var(--accent)!important}
-
-  .pin{width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
-  .pin .dot{width:32px;height:32px;background:#232d44;border:2px solid #3b4a6b;
-    border-radius:50% 50% 50% 0;transform:rotate(-45deg);
-    display:flex;align-items:center;justify-content:center;
-    transition:background .15s,border-color .15s,box-shadow .15s}
-  .pin .dot img{width:20px;height:20px;object-fit:contain;transform:rotate(45deg);pointer-events:none}
-  .pin:hover .dot{border-color:var(--accent)}
-  .pin.playing .dot{background:var(--accent);border-color:#9cc6ff;box-shadow:0 0 0 6px rgba(79,156,255,.25)}
-  .pin.playing::after{content:"";position:absolute;left:50%;top:22px;width:44px;height:44px;
-    border-radius:50%;border:2px solid var(--accent);pointer-events:none;
-    animation:pin-ping 1.8s ease-out infinite}
-  @keyframes pin-ping{
-    0%{transform:translate(-50%,-50%) scale(.5);opacity:.85}
-    70%,100%{transform:translate(-50%,-50%) scale(1.6);opacity:0}
-  }
-  /* Draggable drop pin used while adding a station (placed by clicking the map) */
-  .drop-pin{width:40px;height:40px;position:relative;cursor:grab}
-  .drop-pin:active{cursor:grabbing}
-  .drop-pin span{position:absolute;left:50%;top:50%;width:26px;height:26px;
-    transform:translate(-50%,-50%);border-radius:50%;background:var(--accent);
-    border:3px solid #dceaff;box-shadow:0 2px 8px rgba(0,0,0,.5)}
-  .drop-pin::after{content:"";position:absolute;left:50%;top:20px;width:44px;height:44px;
-    border-radius:50%;border:2px solid var(--accent);pointer-events:none;
-    animation:pin-ping 1.8s ease-out infinite}
-
-  .cluster-badge{width:46px;height:46px;border-radius:50%;
-    background:rgba(27,35,54,.95);border:2px solid var(--accent);color:var(--text);
-    font-weight:700;font-size:15px;display:flex;align-items:center;justify-content:center;
-    box-shadow:0 4px 14px rgba(0,0,0,.5)}
-  .cluster-badge.playing{border-color:var(--green);box-shadow:0 0 0 5px rgba(53,208,127,.25)}
+  #map{position:absolute;top:0;bottom:0;left:340px;right:0;background:#0a0e16;overflow:hidden}
+  #map canvas{display:block;transform:translateX(-60px)}
 
   #player{position:absolute;left:calc(340px + 16px);right:16px;bottom:18px;z-index:500;
     display:flex;align-items:center;gap:14px;padding:10px 16px;
@@ -168,7 +126,7 @@
   .overlay.show{display:flex}
   /* Add-station is a non-modal panel docked on the right edge (no dimming
      backdrop), so the map stays interactive while it is open: you can click
-     the map to drop a pin and drag it to fine-tune the location. */
+     the globe to set the station location (shown as a ripple ring). */
   #add-overlay{background:none;backdrop-filter:none;align-items:stretch;justify-content:flex-end}
   #add-overlay .dialog{width:min(430px,100vw);height:100%;max-height:none;
     border-radius:14px 0 0 14px;border-right:none;
@@ -211,7 +169,7 @@
     <header>
       <div class="titles">
         <h1>Vibes Radio Map</h1>
-        <p class="sub"><span id="count">0</span> of <span id="total">0</span> stations &middot; click a pin or a list entry to listen</p>
+        <p class="sub"><span id="count">0</span> of <span id="total">0</span> stations &middot; click a list entry to listen</p>
       </div>
       <button id="add-fab" title="Add a station" aria-label="Add a station">+</button>
     </header>
@@ -264,7 +222,7 @@
           <div class="field"><label for="a-lat">Latitude</label><input id="a-lat" type="number" step="any" placeholder="45.42"></div>
           <div class="field"><label for="a-lng">Longitude</label><input id="a-lng" type="number" step="any" placeholder="-75.70"></div>
         </div>
-        <p class="msg">Tip: click the map to drop a pin (drag it to fine-tune) &mdash; or type the coordinates.</p>
+        <p class="msg">Tip: click the globe to set the location &mdash; or type the coordinates.</p>
         <div class="field"><label class="check" for="a-hls"><input id="a-hls" type="checkbox"> HLS (m3u8) stream</label></div>
         <div class="actions">
           <button type="button" class="btn" id="add-cancel">Cancel</button>
@@ -285,8 +243,7 @@
     </div>
   </div>
 
-  <script src="/static/leaflet.js"></script>
-<script src="/static/leaflet.markercluster.js"></script>
+  <script src="/static/globe.gl.min.js"></script>
   <script src="/static/hls.min.js"></script>
 <script>
 "use strict";
@@ -308,8 +265,8 @@ audio.volume = 0.8;
 }
 
 let stations = [];
-let markers = new Map();
-let clusterGroup = null; // Leaflet.markercluster group
+let globe = null;        // globe.gl instance
+let dropPin = null;      // {lat,lng} while the add-station overlay is open
 let current = null;      // id of selected station
 let hls = null;
 let statusTimer = null;
@@ -341,26 +298,48 @@ function lsDel(key) {
   try { window.localStorage.removeItem(key); } catch (e) {}
 }
 
-const map = L.map("map");
-// Default center if geolocation fails
-let defaultCenter = [45.5017, -73.5673];
-function setMapView(position) {
-  const lat = position.coords.latitude;
-  const lng = position.coords.longitude;
-  map.setView([lat, lng], 12);
-}
+// 3D globe via globe.gl (self-hosted bundle + local textures + Natural Earth outlines).
+// Default center if geolocation fails: Montréal.
+const DEFAULT_CENTER = { lat: 45.5017, lng: -73.5673 };
+globe = new Globe($("#map"))
+  .globeImageUrl("/static/img/earth-blue-marble.jpg")
+  .bumpImageUrl("/static/img/earth-topology.png")
+  .backgroundColor("#000")
+  .ringLat((o) => o.lat)
+  .ringLng((o) => o.lng)
+  .ringColor(() => (t) => "rgba(100,200,255," + (1 - t) + ")")
+  .ringAltitude(0.02)
+  .ringsData([])
+  .ringMaxRadius(30)
+  .ringPropagationSpeed(2)
+  .ringRepeatPeriod(1500)
+  .onGlobeClick((event, coords) => {
+    if (coords && $("#add-overlay").classList.contains("show")) {
+      setDropPin(coords.lat, coords.lng);
+      syncDropPin(coords.lat, coords.lng);
+    }
+  });
+fetch("/static/countries-110m.geojson")
+  .then((r) => r.json())
+  .then((geo) => {
+    globe.polygonsData(geo.features || [])
+      .polygonCapColor(() => "rgba(255,255,255,0)")
+      .polygonSideColor(() => "rgba(255,255,255,0)")
+      .polygonStrokeColor(() => "rgba(120,190,255,0.35)")
+      .polygonAltitude(0.002);
+  })
+  .catch(() => {});
+globe.pointOfView({ lat: DEFAULT_CENTER.lat, lng: DEFAULT_CENTER.lng, altitude: 2.2 }, 0);
 if (navigator.geolocation) {
-  navigator.geolocation.getCurrentPosition(setMapView, () => map.setView(defaultCenter, 12));
-} else {
-  map.setView(defaultCenter, 12);
+  navigator.geolocation.getCurrentPosition(
+    (position) =>
+      globe.pointOfView(
+        { lat: position.coords.latitude, lng: position.coords.longitude, altitude: 2.2 },
+        0
+      ),
+    () => globe.pointOfView({ lat: DEFAULT_CENTER.lat, lng: DEFAULT_CENTER.lng, altitude: 2.2 }, 0)
+  );
 }
-// Map tiles: plain OpenStreetMap standard tiles — no API key required.
-// Note: no {r} retina placeholder — tile.openstreetmap.org returns 400 for @2x tiles.
-L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution:
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  maxZoom: 19,
-}).addTo(map);
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
@@ -417,58 +396,9 @@ function applyFilters() {
   renderMarkers();
 }
 
-// Stations at (or very near) the same location get fanned out onto a circle
-// around their shared point so every pin is visible and clickable.
-// Positions are stored on st._lat / st._lng and used for both pin and centering.
-function fanOut(list) {
-  const R = 0.0025; // ~280 m fan radius
-  const THRESHOLD_KM = 0.4; // closer than this counts as co-located
-  const n = list.length;
-  const valid = list.map((st) => typeof st.lat === "number" && typeof st.lng === "number");
-  // Union-find: merge every pair of stations within THRESHOLD_KM.
-  const parent = list.map((_, i) => i);
-  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
-  const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
-  const distKm = (a, b) => {
-    const midLat = ((a.lat + b.lat) / 2) * Math.PI / 180;
-    const dx = (a.lng - b.lng) * 111.32 * Math.cos(midLat);
-    const dy = (a.lat - b.lat) * 110.57;
-    return Math.hypot(dx, dy);
-  };
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      if (valid[i] && valid[j] && distKm(list[i], list[j]) < THRESHOLD_KM) union(i, j);
-    }
-  }
-  const groups = new Map();
-  list.forEach((st, i) => {
-    if (!valid[i]) { st._lat = null; st._lng = null; return; }
-    const root = find(i);
-    if (!groups.has(root)) groups.set(root, []);
-    groups.get(root).push(st);
-  });
-  for (const group of groups.values()) {
-    if (group.length === 1) {
-      const st = group[0];
-      st._lat = st.lat; st._lng = st.lng;
-      continue;
-    }
-    const lat = group.reduce((s, st) => s + st.lat, 0) / group.length;
-    const lng = group.reduce((s, st) => s + st.lng, 0) / group.length;
-    const cosLat = Math.max(Math.cos(lat * Math.PI / 180), 0.2);
-    group.forEach((st, i) => {
-      const a = (2 * Math.PI * i) / group.length - Math.PI / 2;
-      st._lat = lat + R * Math.sin(a);
-      st._lng = lng + (R * Math.cos(a)) / cosLat;
-    });
-  }
-}
-
 function centerOn(st) {
-  const lat = typeof st._lat === "number" ? st._lat : st.lat;
-  const lng = typeof st._lng === "number" ? st._lng : st.lng;
-  if (typeof lat === "number" && typeof lng === "number") {
-    map.flyTo([lat, lng], 15, { duration: 0.8 });
+  if (typeof st.lat === "number" && typeof st.lng === "number") {
+    globe.pointOfView({ lat: st.lat, lng: st.lng, altitude: 1.05 }, 1000);
   }
 }
 
@@ -485,44 +415,34 @@ function refreshPlayBtn() {
   $("#eq").hidden = audio.paused;
 }
 
-function pinIcon(st, playing) {
-  return L.divIcon({
-    className: "pin" + (playing ? " playing" : ""),
-    html: '<div class="dot">' + logoImg(st, "logo") + "</div>",
-    iconSize: [44, 44],
-    iconAnchor: [22, 40],
-  });
-}
-
+// No pins. The selected station is shown as a single ripple ring.
+// While the add-station overlay is up, the drop pin takes the ring instead.
+// ringMode is the ring state we last applied ("playing:<id>", "paused:<id>"
+// or null). renderMarkers no-ops when the state is unchanged, so filter
+// re-renders and keystrokes never re-set ringsData and restart the ripple.
+let ringMode = null;
 function renderMarkers() {
-  if (clusterGroup) map.removeLayer(clusterGroup);
-  markers.clear();
-  fanOut(stations);
-  clusterGroup = L.markerClusterGroup({
-    showCoverageOnHover: false,
-    maxClusterRadius: 60,
-    spiderfyOnMaxZoom: true,
-    iconCreateFunction: (c) => {
-      const playing = current && !audio.paused &&
-        c.getAllChildMarkers().some((m) => m.stId === current);
-      return L.divIcon({
-        html: '<div class="cluster-badge' + (playing ? " playing" : "") + '">' + c.getChildCount() + "</div>",
-        className: "",
-        iconSize: [46, 46],
-      });
-    },
-  });
-  for (const st of visible()) {
-    if (typeof st._lat !== "number" || typeof st._lng !== "number") continue;
-    const playing = current === st.id && !audio.paused;
-    const m = L.marker([st._lat, st._lng], { icon: pinIcon(st, playing) });
-    m.stId = st.id;
-    m.bindTooltip(fmtFreq(st) + " &mdash; " + esc(st.name), { direction: "top", offset: [0, -34] });
-    m.on("click", () => togglePlay(st));
-    clusterGroup.addLayer(m);
-    markers.set(st.id, m);
+  if (dropPin) return;
+  const st = current ? stations.find((s) => s.id === current) : null;
+  const hasPos = !!(st && typeof st.lat === "number" && typeof st.lng === "number");
+  const mode = hasPos ? (audio.paused ? "paused:" : "playing:") + st.id : null;
+  if (mode === ringMode) return;
+  ringMode = mode;
+  if (mode === null) {
+    // Stopped (or no position): clear the ring immediately.
+    globe.ringsData([]);
+    globe.ringRepeatPeriod(1500);
+  } else if (mode.startsWith("paused:")) {
+    // Paused: stop spawning new rings but let in-flight ones finish their
+    // 15s tween. Don't touch ringsData — re-setting it disposes the
+    // in-flight rings (removeDelay:0) and would hard-stop the ripple.
+    globe.ringRepeatPeriod(0);
+  } else {
+    // Playing: a fresh object reference forces a new ring object (rings are
+    // keyed by reference), restarting the spawn cycle from scratch.
+    globe.ringRepeatPeriod(1500);
+    globe.ringsData([{ lat: st.lat, lng: st.lng }]);
   }
-  map.addLayer(clusterGroup);
 }
 
 function renderList() {
@@ -635,10 +555,10 @@ function togglePlay(st) {
   startPlayback(st);
 }
 
-// Pins and the cluster badge only reflect the *live* playback state, so
-// re-render them whenever playback actually starts/stops (the play and
-// pause events fire asynchronously, after startPlayback's own render pass,
-// which always runs while audio is still paused).
+// The list's "playing" highlight and the selection ring reflect the *live*
+// playback state, so re-render them whenever playback actually starts/stops
+// (the play and pause events fire asynchronously, after startPlayback's own
+// render pass, which always runs while audio is still paused).
 function refreshUI() {
   renderList();
   renderMarkers();
@@ -775,43 +695,36 @@ document.addEventListener("keydown", (e) => {
   const addOverlay = $("#add-overlay");
   const aLat = $("#a-lat"), aLng = $("#a-lng");
 
-  /* Drop pin: placed by clicking the map while the panel is open; dragging it
-     fine-tunes the location and keeps the Latitude/Longitude fields in sync.
-     It lives on the map itself (never in clusterGroup) so re-renders keep it. */
-  let dropPin = null;
-  function syncDropPin() {
-    if (!dropPin) return;
-    const p = dropPin.getLatLng();
-    aLat.value = p.lat.toFixed(6);
-    aLng.value = p.lng.toFixed(6);
+  /* Drop pin: clicking the globe while the panel is open moves a single
+     ripple ring (see onGlobeClick above) and keeps the fields in sync. */
+  function syncDropPin(lat, lng) {
+    aLat.value = lat.toFixed(6);
+    aLng.value = lng.toFixed(6);
   }
-  function placeDropPin(lat, lng) {
-    if (dropPin) { dropPin.setLatLng([lat, lng]); }
-    else {
-      dropPin = L.marker([lat, lng], {
-        draggable: true,
-        icon: L.divIcon({ html: "<span></span>", className: "drop-pin", iconSize: [40, 40] })
-      }).addTo(map);
-      dropPin.on("drag dragend", syncDropPin);
-    }
-    syncDropPin();
+  function setDropPin(lat, lng) {
+    dropPin = { lat: lat, lng: lng };
+    // Invalidate the ring-mode tracker so clearDropPin's renderMarkers
+    // re-applies a real ring afterward ("pin" never matches a computed mode).
+    ringMode = "pin";
+    // If playback is paused the spawn period is 0 — restore it or the pin's
+    // fresh ring object would never spawn and the pin would be invisible.
+    globe.ringRepeatPeriod(1500);
+    globe.ringsData([{ lat: lat, lng: lng }]);
   }
-  function hideDropPin() {
-    if (dropPin) { map.removeLayer(dropPin); dropPin = null; }
+  function clearDropPin() {
+    dropPin = null;
+    renderMarkers();
   }
-  map.on("click", (e) => {
-    if (addOverlay.classList.contains("show")) placeDropPin(e.latlng.lat, e.latlng.lng);
-  });
 
   function openAdd() {
     $("#add-form").reset();
-    hideDropPin();
+    clearDropPin();
     addOverlay.classList.add("show");
     $("#a-name").focus();
   }
   function closeAdd() {
     addOverlay.classList.remove("show");
-    hideDropPin();
+    clearDropPin();
   }
   $("#add-fab").addEventListener("click", openAdd);
   $("#add-cancel").addEventListener("click", closeAdd);

@@ -54,8 +54,7 @@ def get_session() -> requests.Session:
 #  - 'unsafe-inline' for script-src/style-src: index.html has an inline
 #    <style> and an inline <script> block (the JS is written inline rather
 #    than split out, so this is the pragmatic exception);
-#  - img-src: data: (the inline radio-icon SVG data URI) and the OpenStreetMap
-#    tile host, the only remote images;
+#  - img-src: data: (the inline radio-icon SVG data URI), the only remote images;
 #  - worker-src: hls.js spawns blob: workers for transmuxing.
 # Referrer-Policy: no-referrer keeps any ?token= or X-Vibes-Token context from
 # ever leaking into a Referrer header if a request does go third-party.
@@ -63,7 +62,7 @@ CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline'; "
     "style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data: https://tile.openstreetmap.org; "
+    "img-src 'self' data:; "
     "connect-src 'self'; "
     "media-src 'self'; "
     "font-src 'self' data:; "

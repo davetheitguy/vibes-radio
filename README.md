@@ -30,24 +30,22 @@ vibe.
 
 ## What it does
 
-Open a web page and get a map with one pin per radio station.
-Click any pin (or any entry in the sidebar) and that station starts streaming
+Open a web page and get a 3D globe of the radio stations.
+Click any entry in the sidebar and that station starts streaming
 straight into your browser — no apps, no plugins, no DRM.
 
 Concretely:
 
-- **A Leaflet map** with one pin per station; the pin shows the
-  frequency.
-- **Click to stream.** Selecting a station centers the map on it and plays it.
-  Spacebar toggles play/pause.
+- **A 3D globe** (globe.gl, fully local) with country outlines.
+- **Click to stream.** Selecting a station flies the camera to it, shows an
+  animated ripple ring at its location, and plays it. Spacebar toggles
+  play/pause.
 - **A sidebar** with station logos (or a built-in radio icon when a logo is
   missing or fails to load), frequencies, and country.
 - **Your own stations:** a floating **+** button opens a form to add a station
   (name, stream URL, frequency, logo, coordinates, HLS toggle). Hover any
   station in the sidebar for a trash icon to remove it — with a confirm prompt
   first.
-- **Clustering:** stations at the same coordinates collapse into a numbered
-  badge when zoomed out and fan out into separate pins when zoomed in.
 - **Real streaming playback:** HLS streams play through hls.js; MP3/AAC play
   natively in the browser.
 
@@ -107,19 +105,26 @@ on every request (no restart needed), and it's the only place the UI's
 add/remove buttons write — new stations are appended with an auto-generated id,
 removals are filtered out and saved.
 
-## Map tiles
+## Globe
 
-The map uses plain **OpenStreetMap** tiles (`tile.openstreetmap.org`) — no
-account, no API key, works out of the box. The OSM tile usage policy asks for
-modest local use, which this app fits comfortably.
+The map is a 3D globe rendered by **globe.gl** (three.js bundled inside the
+UMD build): local Earth textures, country outlines from Natural Earth GeoJSON
+(`static/countries-110m.geojson`), rendered entirely in the browser. Selecting
+a station flies the globe to its location and shows a single animated ripple
+ring — no pins. No tile server, no API key, no third-party runtime requests —
+everything ships in `static/`.
 
 ## Project structure
 
 | File | What it is |
 | --- | --- |
 | `app.py` | The entire Flask backend: routes, station-scoped streaming, signed segments, HLS rewriting, STW recovery |
-| `templates/index.html` | The entire frontend: map, sidebar, player, clustering (one file, zero build step) |
-| `stations.json` | The curated station list — edit it to change what's on the map (re-read on every request, no restart needed) |
+| `templates/index.html` | The entire frontend: globe, sidebar, player (one file, zero build step) |
+| `stations.json` | The curated station list — edit it to change what's on the globe (re-read on every request, no restart needed) |
+| `static/globe.gl.min.js` | globe.gl v2.46.2 UMD bundle (three.js included), self-hosted — no CDN |
+| `static/img/` | Local Earth textures: blue marble, topology bump map, night lights |
+| `static/countries-50m.geojson` | Natural Earth country outlines (fine), bundled locally |
+| `static/countries-110m.geojson` | Natural Earth country outlines (coarse fallback) |
 | `requirements.txt` | Two Python packages: `flask` and `requests` |
 | `.vibes_token` | The write-API token, generated on first run and git-ignored — needed only if you script the add/remove API |
 
